@@ -1,0 +1,136 @@
+---
+export interface Props {
+  name: string;
+  actions: { actionName: string; action: string; actionData: string }[];
+}
+const { name, actions } = Astro.props as Props;
+---
+
+<div id="kt_app_toolbar" class="app-toolbar py-3 py-lg-6">
+  <!--begin::Page hero container-->
+  <div
+    id="kt_app_toolbar_container"
+    class="app-container container-fluid d-flex flex-stack">
+    <!--begin::Page title-->
+    <div
+      class="page-title d-flex flex-column justify-content-center flex-wrap me-3">
+      <h1
+        class="page-heading d-flex text-gray-700 fw-bold fs-3 flex-column justify-content-center my-8">
+        {name}
+      </h1>
+    </div>
+    <!--end::Page title-->
+    <!--begin::Actions-->
+    <div class="d-flex align-items-center gap-2 gap-lg-3">
+      {
+        actions.map((action) => {
+          if (action.action === "modal") {
+            return (
+              <button
+                data-bs-toggle="modal"
+                data-bs-target="#kt_modal_1"
+                class="btn btn-sm fw-bold btn-primary"
+                data-productId={action.actionData}>
+                {action.actionName}
+              </button>
+            );
+          } else {
+            return (
+              <button type="button" class="btn btn-sm fw-bold btn-primary" data-productId={action.actionData}>
+                {action.actionName}
+              </button>
+            )
+          }
+        })
+      }
+    </div>
+    <!--end::Actions-->
+  </div>
+  <!--end::Page hero container-->
+</div>
+
+<script>
+  //////////////////////////////////////////
+  // Helpers
+  import {uploadImage, addNewProduct, updateProduct, deleteProduct} from "../helpers/product"
+
+  //////////////////////////////////////////
+  // Add new product/Update existing product
+  const pageHero = document.querySelector("#kt_app_toolbar") as HTMLElement
+  pageHero.addEventListener('click', (event) => {
+    // Get element and other data attached to it (if exist)
+    const element = event.target as HTMLElement
+    const isModalToggler = element.dataset.bsToggle
+    const productId = element.dataset.productid!;
+
+    // Determine action
+    const isUpdating = productId !== "" && isModalToggler ? true : false
+    const isDeleting = productId !== "" && !isModalToggler ? true : false
+
+    // Set original image default (not exist)
+    let originalImgId = -1
+
+    // If 'update' action
+    if(isUpdating) {
+      // Get product data
+      fetch(`${import.meta.env.PUBLIC_SERVER_URL}/api/products/${productId}/?populate=*`)
+      .then(res => res.json())
+      .then(data => {
+        // Get form
+        const form = document.querySelector("#kt_ecommerce_add_product_form") as HTMLFormElement;
+
+        // Get image data
+        const imageUrl = data.data.attributes.image.data.attributes.url;
+        originalImgId = data.data.attributes.image.data.id
+
+        // Fill inputs with product data
+        const titleInput = form.querySelector('input[name="title"]') as HTMLInputElement
+        titleInput.value = data.data.attributes.title
+        const priceInput = form.querySelector('input[name="price"]') as HTMLInputElement
+        priceInput.value = data.data.attributes.price
+        const image = form.querySelector("#product_image") as HTMLDivElement
+        image.style.backgroundImage = `url("${import.meta.env.PUBLIC_SERVER_URL}${imageUrl}")`
+      })
+    }
+
+    // If 'delete' action
+    if(isDeleting) {
+      deleteProduct(+productId)
+    }
+
+    // Handle form submit
+    const form = document.querySelector("#kt_ecommerce_add_product_form") as HTMLFormElement;
+    // Add event listener
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      // Get image data, title, price from the form
+      const payload = new FormData(form)
+      const title = payload.get("title") as FormDataEntryValue;
+      const price = payload.get("price") as FormDataEntryValue;
+      payload.delete("title")
+      payload.delete("price")
+
+      // Try to upload image
+      let imgId = -1
+      if(originalImgId !== -1) {
+        imgId = await uploadImage(payload, originalImgId)
+      }
+      if(originalImgId === -1) {
+        imgId = await uploadImage(payload)
+      }
+      // If image uploaded and we have it's id
+      if(imgId !== -1) {
+        // Post new product
+        const product = {
+          title,
+          price,
+          image: imgId
+        }
+        // Update product
+        if(isUpdating && productId) updateProduct(+productId, product)
+        // Add new product
+        if(!isUpdating)addNewProduct(product)
+      }
+    })
+  })
+</script>
